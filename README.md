@@ -386,22 +386,6 @@ Without -c, the simple description file(.ccv) will directly convert into Verilog
 
 * -v [revision] [filename] (description) :: (revision) Updates revision and adds descriptions. If specifies +0.1, the default revision will be changed to step. If there is no revision specified, a revision will be added between module desciption and header.
 
-```Python
-
-template:
-ccv -[vr] [verison | +versionstep | +] [file | directory] [descriptions]
-
-//Apply to a file and set revision number.
-ccv -v 1.0 moduleA.v "Formal version"
-
-//Apply to a directory and set revision step
-ccv -vr +0.1 src "Formal version"
-
-??//Apply to multiple files
-ccv -v + moduleA.v+moduleB.v "Cool"
-
-```
-
 * -h (filename) :: (hierarchy) Shows the project hierarchy to a file or to screen.
 
 A simple project is shown as:
@@ -440,7 +424,8 @@ A simple project is shown as:
     This is a quite common error. However, simulator accepts this but shows a uncertain state for the multiple drived signal. Other errors are provied until synthesis and DRC check. Multiple drive check are provied when update project.
 
 ###GUI
-Maybe someday.
+A designed GUI is shown as:
+![gui](ccv.jpg)
 
 ##Implementation of Program
 
@@ -837,4 +822,229 @@ duplicate moduleD nameD 16 gen
 
 * Check file revision history.
 
-#Arbitrary variable amount
+Serveral usage of -v is provided. -r represents for recursively.
+
+```Python
+
+template:
+ccv -[vr] [verison | +versionstep | +] [file | directory] [descriptions]
+
+//Apply to a file and set revision number.
+ccv -v 1.0 moduleA.v "Formal version"
+
+//Apply to a directory and set revision step
+ccv -vr +0.1 src "Formal version"
+
+??//Apply to multiple files
+ccv -v + moduleA.v+moduleB.v "Cool"
+
+```
+
+**Hierarchy** :: Print project hierarchy.
+
+* Find project file first.
+
+* Print project hierarchy or file hierarchy.
+
+```Verilog
+template
+
+ccv -H
+
+output:
+|_::topmodule
+    |nameA::moduleA
+        |namea::cellA
+        |nameb::cellB
+            |namealpha::alpha
+    |nameB::moduleB
+    |nameC1::moduleC
+    |nameC2::moduleC
+
+ccv -H src
+
+output:
+|src
+    |utilities
+        |calc.v
+        |define.h
+    |cells
+        |moduleA.v
+        |moduleB.v
+|top.v
+```
+
+**Formatize** :: Formatize port declarations and coding style.
+
+The usage is shown as:
+
+```Python
+ccv -f [95|01|05|vhd] [95|01] filename filepath
+
+```
+
+**Merge** :: Merge multiple files.
+
+The usage is shown as:
+
+```Verilog
+//a.v
+module moduleA(...);
+...
+endmodule
+
+//b.v
+module moduleB(...);
+...
+endmodule
+
+
+ccv -m add.v a.v b.v
+//add.v
+module moduleA(...);
+...
+endmodule
+
+module moduleB(...);
+...
+endmodule
+
+**Split** :: Split files.
+
+The split process is the opposite of merge.
+
+```Verilog
+ccv -s add.v
+
+add.v
+moduleA.v
+moduleB.v
+```
+
+###Funtions
+####Initial
+* Check the ccv directory first. If no global config file is found, then create one.
+
+```Haskell
+checkConfigFile :: Bool
+
+checkFile :: String -> String -> Bool
+checkFile fileName filePath
+
+createConfig :: ()
+
+buildConfigData :: ConfigData
+
+convertConfigData :: ConfigData -> JDoc
+
+writeJSON :: JDoc -> IO()
+
+```
+
+*  Check the specified directory. If project file exists, throw a warning and wait user's choice.
+
+```Haskell
+checkProjectFile :: Bool
+
+checkFile
+
+throwWarning
+
+getUserChoice
+```
+
+* Scan the current directory and sub-directory recursively(-r) to build a file tree.
+
+```Haskell
+buildFileTree :: String -> FileTree
+buildFileTree filepath
+
+getCurrentDir :: String
+
+getSubDir :: String -> String
+
+```
+
+* Parse the file with Verilog file extensions to build a project hierarchy.
+
+```Haskell
+buildProjectTree :: FileTree -> ProjectTree
+
+parseVerilogFile :: VerilogFile -> VerilogData
+parseVerilogFile verilogFile
+
+getVerilogList :: FileTree -> VerilogList
+getVerilogList :: fileTree
+
+readVerilogFile :: String -> String -> VerilogFile
+readVerilogFile filename filepath
+```
+
+* Create project file.
+
+```Haskell
+buildProjectFile :: ConfigData -> FileTree -> ProjectTree -> ModuleList -> ProjectFile
+
+ConvertProjectFile :: ProjectFile -> JDoc
+
+
+```
+
+####Email Author
+
+* Check the ccv directory first. If no global config file is found, then create one with specified information.
+
+
+* Read config file, replace information and write out.
+
+####Update 
+
+* Find project file from current directory up to parental directories. If no project file is found, throw `PROJECT_NOT_FOUND` error.
+
+```Haskell
+getCurrentDir :: String
+
+getParentalDic :: String -> String
+
+checkProjectFile
+
+```
+
+* Parse project file to get configuration.
+
+```Haskell
+parseProjectFile :: String -> ProjectFile
+
+getConfigData :: ProjectFile -> ConfigData
+getFileTree :: ProjectFile -> FileTree
+getProjectTree :: ProjectFile -> ProjectTree
+getModuleList :: ProjectFile -> ModuleList
+
+```
+
+* Scan the current directory and sub-directory recursively(-r) to build a file tree.
+
+* Parse the file with Verilog file extensions to build a project hierarchy.
+
+* Create project file.
+
+####New
+
+* Check the current directory. If a file with the same name exits, then throw a warning and wait for the user's choice.
+
+* Check project file first. If no project file is found, check global config file. Same as **initial**.
+
+* Parse one of those files to get the configuration.
+
+* Build Verilog file with the configuration.
+
+```Haskell
+buildVerilogFile :: ConfigData -> VerilogFile
+
+prettifyVerilog :: VerilogFile -> VerilogString
+
+
+```
+
+* Write Verilog.
+
