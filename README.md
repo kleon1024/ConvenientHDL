@@ -49,7 +49,7 @@ module filename #(
 endmodule
 ```
 
-* -t [topfilename] (filepath) :: (top) Automaticlly generate a top module from elementary cells.
+* -t [topfilename] [filepath] :: (top) Automaticlly generate a top module from elementary cells.
 
     There are two ways to generate a top file:
 
@@ -645,6 +645,20 @@ A sample file (incomplete) is shown as:
 
 ```
 
+A global config file (.global.project) is shown as:
+
+```JSON
+
+{
+"config":{
+        "author": "authorname", 
+        "contact": "emailaddress", 
+        "version": "version", 
+        "versionstep": "versionstep"
+    }
+}
+```
+
 The optional JSON parsers are: 
 
 ```python
@@ -675,6 +689,13 @@ The aeson package :: https://hackage.haskell.org/package/aeson
 * Check the ccv directory and get a COPYRIGHT DECLARATION file. If the declaration file does not exist, then create a template and a empty declaration file. The COPYRIGHT DECLARATION file is named as "copyright.txt", and the template file is named as "copyright_template.txt".
 
 * Check current directory. If there is no file named as "filename.v", then create the new file. Otherwise return `FILE_DUPLICATION` options : `Cover the file(Y/N):`
+
+The optional Verilog parsers are: 
+
+```python
+The Verilog Parser package :: https://github.com/tomahawkins/verilog  
+The Netlist and Verilog Haskell Package :: https://github.com/pheaver/netlist-verilog    
+```
 
 **Top** :: Create top module.
 
@@ -1043,8 +1064,38 @@ buildVerilogFile :: ConfigData -> VerilogFile
 
 prettifyVerilog :: VerilogFile -> VerilogString
 
-
 ```
 
 * Write Verilog.
+
+
+####Top
+
+* Check Project File.
+
+* Parse ccv file.
+
+* Convert description of ccv into Verilog AST. Throw warning if the module name mismatches.
+
+* Add comments and automatically wire connection.
+
+* Write Verilog.
+
+
+
+###Future Extensions
+**Library**
+
+* import :: import hardware library
+
+```Haskell 
+import Detect as Detect
+
+```
+
+* library :: library specification
+
+```Haskell
+library Detect 
+```
 
