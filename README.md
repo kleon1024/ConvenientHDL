@@ -659,12 +659,18 @@ A global config file (.global.project) is shown as:
 }
 ```
 
-The optional JSON parsers are: 
+The optional JSON parsers: 
 
 ```python
 The RJson package :: http://hackage.haskell.org/package/RJson  
-The json package  :: http://hackage.haskell.org/package/json  
-The aeson package :: https://hackage.haskell.org/package/aeson  
+The json package  :: http://hackage.haskell.org/package/json
+The aeson package :: https://hackage.haskell.org/package/aeson ** 
+```
+
+A directory related package:
+
+```Python
+The Directory-Tree Package :: http://hackage.haskell.org/package/directory-tree
 ```
 
 **Email** :: Set contact email.  
