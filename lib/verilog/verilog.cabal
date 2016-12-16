@@ -1,5 +1,5 @@
 name:           verilog
-version:        0.2
+version:        0.3
 synopsis:       Verilog AST and pretty printer
 description:    Verilog AST and pretty printer -- parser to come later
 category:       Language

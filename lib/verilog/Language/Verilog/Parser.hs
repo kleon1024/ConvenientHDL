@@ -169,11 +169,26 @@ module_description :: Stream s Identity Char => P s Module
 module_description
   = do reserved "module"
        name <- ident
-       ports <- parens (commaSep ident) <|> return []
+       paral <- optionMaybe parameterlist_declaration
+       ports <- parens (commaSep port_declaration) <|> return []
        semi
        items <- many module_item
        reserved "endmodule"
-       return (Module name ports items)
+       return (Module name paral ports items)
+
+parameterlist_declaration :: Stream s Identity Char => P s [ParamDecl]
+parameterlist_declaration 
+  = do symbol "#"
+       paras <- parens (commaSep parameter_declaration01) <|> return []
+       return paras
+
+port_declaration :: Stream s Identity Char => P s PortDecl
+port_declaration
+  = do dir <- portDir
+       ty  <- optionMaybe portType
+       r   <- optionMaybe range
+       i   <- ident
+       return (PortDecl dir ty r i)
 
 module_item :: Stream s Identity Char => P s Item
 module_item
@@ -322,6 +337,14 @@ parameter_declaration
                         <?> "parameter list"
        semi
        return (ParamDecl param_assigns)
+  <?> "parameter declaration"
+
+parameter_declaration01 :: Stream s Identity Char => P s ParamDecl
+parameter_declaration01
+  = do reserved "parameter"
+       param_assign <- parameter_assignment
+                        <?> "parameter"
+       return (ParamDecl [param_assign])
   <?> "parameter declaration"
 
 input_declaration :: Stream s Identity Char => P s InputDecl
@@ -859,6 +882,15 @@ base = do { _ <- char '\''
 
 ident :: Stream s Identity Char => P s Ident
 ident = liftM Ident identifier
+
+portDir :: Stream s Identity Char => P s PortDir
+portDir = (reserved "input"  >> return (PortDir Input))  <|>
+          (reserved "output" >> return (PortDir Output)) <|>
+          (reserved "inout"  >> return (PortDir InOut))  <?> "port direction"
+
+portType :: Stream s Identity Char => P s PortType
+portType = (reserved "wire"  >> return (PortType Wire))  <|>
+           (reserved "reg"   >> return (PortType Reg))
 
 reg_var :: Stream s Identity Char => P s RegVar
 reg_var

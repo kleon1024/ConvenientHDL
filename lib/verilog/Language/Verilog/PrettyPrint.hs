@@ -24,7 +24,12 @@ import Language.Verilog.Syntax
 -- some utilities, which should go in a common module elsewhere
 
 commasep :: [Doc] -> Doc
-commasep = fsep . punctuate comma
+commasep = vcat . punctuate comma
+
+lineParens :: Doc -> Doc
+lineParens p =  char '(' $$
+                p <> char '\n' <>
+                char ')' 
 
 mb :: (x -> Doc) -> Maybe x -> Doc
 mb = maybe empty
@@ -47,14 +52,31 @@ ppDescription (ModuleDescription m) = ppModule m
 ppDescription (UDPDescription udp)  = ppUDP udp
 
 ppModule :: Module -> Doc
-ppModule (Module name ports body)
-  = text "module" <+> ppIdent name <+> ppPorts ports <> semi $$
-    nest 2 (vcat (map ppItem body)) $$
+ppModule (Module name mb_paras ports body)
+  = text "module" <+> ppIdent name $$
+    mb ppParas mb_paras $$
+    ppPorts ports <> semi <> char '\n' $$
+    vcat (map ppItem body) $$
     text "endmodule" <> char '\n'
 
-ppPorts :: [Ident] -> Doc
-ppPorts []  = empty
-ppPorts xs  = parens (ppIdents xs)
+ppPorts :: [PortDecl] -> Doc
+ppPorts [] = empty
+ppPorts x = (lineParens . commasep $ map ppPortDecl x)
+
+ppParas :: [ParamDecl] -> Doc
+ppParas []    = empty
+ppParas paras = char '#' <> ppParaList paras
+    where ppParaList = lineParens . commasep . map ppParamDecl0
+
+ppPortDecl :: PortDecl -> Doc
+ppPortDecl (PortDecl dir mb_type mb_range name)
+  = ppPortDir dir <+> mb ppPortType mb_type <+> mb ppRange mb_range <+> ppIdent name
+
+ppPortDir :: PortDir -> Doc
+ppPortDir (PortDir dir) = text (show dir)
+
+ppPortType :: PortType -> Doc
+ppPortType (PortType t) = text (show t)
 
 ppItem :: Item -> Doc
 ppItem (ParamDeclItem x)     = ppParamDecl x
@@ -182,6 +204,10 @@ ppParamDecl :: ParamDecl -> Doc
 ppParamDecl (ParamDecl paramAssigns)
   = text "parameter" <+> ppParamAssigns paramAssigns <> semi
 
+ppParamDecl0 :: ParamDecl -> Doc
+ppParamDecl0 (ParamDecl paramAssigns)
+  = text "parameter" <+> ppParamAssigns paramAssigns
+
 ppInputDecl :: InputDecl -> Doc
 ppInputDecl (InputDecl mb_range vars)
   = text "input" <+> mb ppRange mb_range <+> ppIdents vars <> semi
@@ -258,7 +284,7 @@ ppDelaysOrParams (Right []) = empty
 ppDelaysOrParams (Left es)
   = char '#' <> parens (commasep (map ppExpr es))
 ppDelaysOrParams (Right ps)
-  = char '#' <> parens (commasep (map ppParameter ps))
+  = char '#' <> lineParens (commasep (map ppParameter ps))
 
 ppParameter :: Parameter -> Doc
 ppParameter (Parameter x expr)
@@ -266,11 +292,12 @@ ppParameter (Parameter x expr)
 
 ppInsts :: [Inst] -> Doc
 ppInsts insts
-  = vcat (punctuate comma (map ppInst insts))
+  = char '\n' <> vcat (punctuate comma (map ppInst insts))
 
 ppInst :: Inst -> Doc
 ppInst (Inst x r cs)
-  = ppIdent x <> mb ppRange r <> parens (commasep ppCs)
+  = ppIdent x <> mb ppRange r <> char '\n' <>
+    lineParens (commasep ppCs)
   where
     ppCs = case cs of
              Connections exprs    -> map ppExpr exprs

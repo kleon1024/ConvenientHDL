@@ -32,100 +32,8 @@ import System.Directory
 import System.Directory.Tree
 import System.FilePath.Windows ((</>)) 
 
-data Direction = Input | Output | InOut deriving (Show, Typeable, Data, Generic)
-
-instance NFData Direction
-
-data ElemType  = Wire | Register deriving (Show, Typeable, Data, Generic)
-
-instance NFData ElemType
-
-data Version = Version {
-    v0 :: Int,
-    v1 :: Int,
-    v2 :: Int,
-    v3 :: Int
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData Version
-
-data DirecTree = DirecTree {
-    node_name :: String,
-    tree_node :: [DirecTree]
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData DirecTree
-
-data ProjectTree = ProjectTree {
-    hier_name   :: String,
-    mod         :: String,
-    file        :: String,
-    hier_node   :: [ProjectTree]
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData ProjectTree
-
-data ModuleUnit = ModuleUnit {
-    mod_name    :: String,
-    mod_note    :: String,
-    paras       :: [Parameter],
-    ports       :: [Port]
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData ModuleUnit
-
-data Parameter = Parameter {
-    para    :: String,
-    value   :: String
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData Parameter
-
-data Port = Port {
-    port        :: String,
-    direction   :: Direction,
-    eletype     :: ElemType,
-    port_len    :: String,
-    port_wid    :: String,
-    port_note   :: String
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData Port
-
-data ConfigData = ConfigData {
-    author      :: String,
-    contact     :: String,
-    version     :: Version,
-    verstep     :: Version
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData ConfigData
-
-data ProjectData = ProjectData {
-    directory   :: DirecTree,
-    hierarchy   :: ProjectTree,
-    modules     :: [ModuleUnit]
-} deriving (Show, Typeable, Data, Generic)
-
-instance NFData ProjectData
-
-data TopData = TopData ConfigData ProjectData deriving (Show, Typeable, Data, Generic)
-
-instance NFData TopData
-
--- This splice will derive instances of ToJSON and FromJSON for us.
-
-$(deriveJSON defaultOptions ''ConfigData)
-$(deriveJSON defaultOptions ''ProjectData)
-$(deriveJSON defaultOptions ''TopData)
-$(deriveJSON defaultOptions ''Port)
-$(deriveJSON defaultOptions ''Parameter)
-$(deriveJSON defaultOptions ''ModuleUnit)
-$(deriveJSON defaultOptions ''ProjectTree)
-$(deriveJSON defaultOptions ''DirecTree)
-$(deriveJSON defaultOptions ''Version)
-$(deriveJSON defaultOptions ''Direction)
-$(deriveJSON defaultOptions ''ElemType)
+import ProjectConfig
+import VerilogHandle
 
 globalConfigJson = ConfigData {
     author = "",
@@ -145,6 +53,7 @@ globalConfigJson = ConfigData {
 }
 
 allowedFileExtension = [".v",".sv",".vhd"]
+
 
 initProject :: [String] -> String -> IO()
 initProject filepaths currentPath =
@@ -178,19 +87,19 @@ createProject projectPath = do
         if isNothing maybeConfigData then do
             writeFile configFilePath $ encode globalConfigJson
             print "Reinitialized Configuration File."
-            createProjectFile projectPath globalConfigJson
+            createProjectFile projectFilePath projectPath globalConfigJson
         else do
             let configData = fromJust maybeConfigData
             print configData
             print "Global configuration file is found."
-            createProjectFile projectPath configData
+            createProjectFile projectFilePath projectPath configData
     else do
         writeFile configFilePath $ encode globalConfigJson
         print "Reinitialized Configuration File."
-        createProjectFile projectPath globalConfigJson
+        createProjectFile projectFilePath projectPath globalConfigJson
 
-createProjectFile :: String -> ConfigData -> IO()
-createProjectFile path configData = do
+createProjectFile :: String -> FilePath -> ConfigData -> IO()
+createProjectFile filepath path configData = do
     subDirTree <- dirTree <$> readDirectory path
     -- writeFile "dirtree.txt" (pack (show subDirTree))
     if successful subDirTree then do
@@ -201,9 +110,24 @@ createProjectFile path configData = do
     let direcTree = toDirecTree subDirTree
     let fileList = getFileList [] subDirTree
     print fileList
-    -- let moduleList = 
-    -- let hierTree = 
-    
+    verilogList <- sequence (parseFromFileList fileList)
+    -- writeFile "module.py" $ pack (show (convertToModuleList fileList verilogList))
+    let moduleUnitList = convertToModuleUnitList fileList verilogList
+    let moduleList = convertToModuleList verilogList
+    checkNameConflict moduleUnitList
+    let hierTree = convertToProjectTreeList moduleList
+    let projectData = ProjectData direcTree hierTree moduleUnitList
+    let topData = TopData configData projectData
+    print "Already get all information."
+    writeFile filepath $ encode topData
+
+checkNameConflict :: [ModuleUnit] -> IO()
+checkNameConflict x = msum (map (checkName x) x) where
+    checkName list unit = msum (map (compareName unit) list)
+    compareName (ModuleUnit na pa _ _ _) (ModuleUnit nb pb _ _ _) = 
+        case and [(na == nb), (pa /= pb)] of 
+            True -> print $ "Name conflict: " ++ na ++ "::" ++ pa ++ " == " ++ nb ++ "::" ++ pb
+            False -> return ()
 
 toDirecTree :: DirTree String -> DirecTree
 toDirecTree (File name file) = DirecTree name []
@@ -214,8 +138,10 @@ getDirFileName path fileList (File name _)   = (intercalate "\\" (path ++ [name]
 getDirFileName path fileList (Dir  name dir) = concat $ map (getDirFileName (path ++ [name]) fileList) dir
 
 getFileList :: [String] -> DirTree String -> [String]
+getFileList _ (Dir _ []) = []
 getFileList path (Dir _ dir) = filter (multSuffix allowedFileExtension) $ getDirFileName path [] (Dir "." dir)
+getFileList _ _ = []
+
 
 multSuffix :: [String] -> String -> Bool
 multSuffix cond str = or $ map ($ str) (map isSuffixOf cond)
-

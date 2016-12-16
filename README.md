@@ -594,6 +594,7 @@ A sample file (incomplete) is shown as:
             {
                 "name": "modulea", 
                 "note": "/*First Stage Calculation module*/", 
+                "file": "cells/modulea.v",
                 "paras": [
                     {
                         "para": "WIDTH", 

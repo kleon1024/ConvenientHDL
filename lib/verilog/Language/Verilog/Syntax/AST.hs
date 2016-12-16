@@ -42,7 +42,7 @@ module Language.Verilog.Syntax.AST
   Edge(..), EdgeSymbol, edgeSymbols, validEdgeSymbol,
 
   -- * Items and Declarations
-  Item(..), FunctionType(..), LocalDecl(..),
+  Item(..), FunctionType(..), LocalDecl(..), PortDecl(..),
   ParamDecl(..), InputDecl(..), OutputDecl(..), InOutDecl(..),
   NetDecl(..), RegDecl(..), RegType(..), EventDecl(..),
 
@@ -60,7 +60,9 @@ module Language.Verilog.Syntax.AST
   UnaryOp(..), BinaryOp(..),
 
   -- * Miscellaneous
-  Ident(..), ParamAssign(..), ExpandRange(..), Range(..), RegVar(..),
+  Ident(..), PortDir(..), PortType(..),
+  PortDirWord(..), PortTypeWord(..),
+  ParamAssign(..), ExpandRange(..), Range(..), RegVar(..),
   AssignmentControl(..), DelayControl, EventControl(..), Delay,
   EventExpr(..), ScalarEventExpr,
   ChargeStrength, DriveStrength(..),
@@ -91,7 +93,8 @@ data Description
 -- the ports have a more complicated type than simply @Ident@.
 data Module
   = Module Ident     -- The name of module
-           [Ident]   -- The list of ports, including both inputs and outputs
+           (Maybe [ParamDecl])
+           [PortDecl]   -- The list of ports, including both inputs and outputs
                      -- In the spec, this is a more complicated type.
            [Item]    -- The module's body, a list of declarations.
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -247,6 +250,10 @@ data OutputDecl
 
 data InOutDecl
   = InOutDecl (Maybe Range) [Ident]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data PortDecl
+  = PortDecl PortDir (Maybe PortType) (Maybe Range) Ident
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data NetDecl
@@ -473,6 +480,31 @@ data Range
   = Range ConstExpr ConstExpr
   deriving (Eq, Ord, Show, Data, Typeable)
 
+data PortDirWord
+  = Input | Output | InOut
+  deriving (Eq, Ord, Bounded, Enum, Data, Typeable)
+
+instance Show PortDirWord where
+  show Input  = "input"
+  show Output = "output"
+  show InOut  = "inout"
+
+data PortDir
+  = PortDir PortDirWord
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data PortTypeWord
+  = Reg | Wire
+  deriving (Eq, Ord, Bounded, Enum, Data, Typeable)
+
+instance Show PortTypeWord where
+  show Reg  = "reg"
+  show Wire = "wire"
+
+data PortType
+  = PortType PortTypeWord
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 -- | The optional timing control for a procedural assignment statement
 -- (i.e. blocking and nonblocking assignments)
 data AssignmentControl
@@ -606,15 +638,17 @@ instance Binary Description where
 
 
 instance Binary Module where
-        put (Module x1 x2 x3)
+        put (Module x1 x2 x3 x4)
           = do put x1
                put x2
                put x3
+               put x4
         get
           = do x1 <- get
                x2 <- get
                x3 <- get
-               return (Module x1 x2 x3)
+               x4 <- get
+               return (Module x1 x2 x3 x4)
 
 
 instance Binary Item where
@@ -893,6 +927,18 @@ instance Binary InOutDecl where
                x2 <- get
                return (InOutDecl x1 x2)
 
+instance Binary PortDecl where
+        put (PortDecl x1 x2 x3 x4)
+          = do put x1
+               put x2
+               put x3
+               put x4
+        get
+          = do x1 <- get
+               x2 <- get
+               x3 <- get
+               x4 <- get
+               return (PortDecl x1 x2 x3 x4)
 
 instance Binary NetDecl where
         put x
@@ -1501,6 +1547,56 @@ instance Binary Strength1 where
                    3 -> return Weak1
                    4 -> return Highz1
                    _ -> error "Corrupted binary data for Strength1"
+
+instance Binary PortDirWord where
+        put x
+          = case x of 
+                Input -> putWord8 0
+                Output -> putWord8 1
+                InOut -> putWord8 2
+        get
+          = do i <- getWord8
+               case i of
+                  0 -> return Input
+                  1 -> return Output
+                  2 -> return InOut
+                  _ -> error "Corrupted binary data for PortDir"
+
+instance Binary PortTypeWord where
+        put x
+          = case x of 
+                Reg -> putWord8 0
+                Wire -> putWord8 1
+        get
+          = do i <- getWord8
+               case i of
+                  0 -> return Reg
+                  1 -> return Wire
+                  _ -> error "Corrupted binary data for PortType"
+
+instance Binary PortDir where
+        put x
+          = case x of
+                PortDir x1 -> do putWord8 0
+                                 put x1
+        get
+          = do i <- getWord8
+               case i of
+                   0 -> do x1 <- get
+                           return (PortDir x1)
+                   _ -> error "Corrupted binary data for PortDir"
+
+instance Binary PortType where
+        put x
+          = case x of
+                PortType x1 -> do putWord8 0
+                                  put x1
+        get
+          = do i <- getWord8
+               case i of
+                   0 -> do x1 <- get
+                           return (PortType x1)
+                   _ -> error "Corrupted binary data for PortType"
 
 
 instance Binary NetType where
