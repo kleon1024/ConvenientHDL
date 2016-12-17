@@ -10,6 +10,7 @@ import Text.Printf
 
 data Flag
     = Email                 -- --email
+    | Author                -- --author
     | Initial               -- --init
     | Update                -- --update
     | New                   -- -n
@@ -28,7 +29,9 @@ data Flag
 
 flags = 
     [Option []["email"] (NoArg Email)
-        "Set in email and author in file header."
+        "Set in email in file header."
+    ,Option []["author"] (NoArg Author)
+        "Set in contact in file header."
     ,Option []["init"] (NoArg Initial)
         "Set project path, which is used to generate the file hierachy."
     ,Option []["update"] (NoArg Update)

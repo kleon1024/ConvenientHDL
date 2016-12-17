@@ -7,7 +7,7 @@ import System.IO
 import System.Directory
 
 import ArgParseCCV
-import ProjectHandle (initProject)
+import ProjectHandle (initProject, genTopFromFileList, setEmail, setAuthor, updateProject)
 --import VerilogParser
 
 main = do
@@ -17,6 +17,14 @@ main = do
     currentPath <- getCurrentDirectory
     putStrLn $ "Execute: " ++ show currentPath
 
-    if Initial `elem` args 
-        then initProject files currentPath
-        else putStrLn $ "done"
+    if Initial `elem` args then 
+        initProject files currentPath
+    else if Top `elem` args then 
+        genTopFromFileList files currentPath
+    else if Email `elem` args then
+        setEmail files currentPath
+    else if Author `elem` args then
+        setAuthor files currentPath
+    else if Update `elem` args then
+        updateProject currentPath
+    else print "done"

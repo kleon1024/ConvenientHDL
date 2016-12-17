@@ -466,6 +466,7 @@ Perform different operations according to different options:
 ```Haskell
 data Flag
     = Email                 -- --email
+    | Author                -- --author
     | Initial               -- --init
     | Update                -- --update
     | New                   -- -n
@@ -671,7 +672,7 @@ The aeson package :: https://hackage.haskell.org/package/aeson **
 A directory related package:
 
 ```Python
-The Directory-Tree Package :: http://hackage.haskell.org/package/directory-tree
+The Directory-Tree Package :: http://hackage.haskell.org/package/directory-tree **
 ```
 
 **Email** :: Set contact email.  
