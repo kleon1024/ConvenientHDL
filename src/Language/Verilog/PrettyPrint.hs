@@ -61,16 +61,19 @@ ppModule (Module name mb_paras ports body)
 
 ppPorts :: [PortDecl] -> Doc
 ppPorts [] = empty
-ppPorts x = (lineParens . commasep $ map ppPortDecl x)
+ppPorts x = lineParens . commasep $ map (ppPortDecl (getMaxLen x)) x
+  where
+    ppPortDecl l (PortDecl dir mb_type mb_range name c) = 
+        ppItem c <> text (ppPortSub dir mb_type mb_range) <+> 
+        text (replicate (l - length (ppPortSub dir mb_type mb_range)) ' ') <+> ppIdent name
+    ppPortSub dir mb_type mb_range = render (ppPortDir dir  <+> maybe (text "wire") ppPortType mb_type <+> mb ppRange mb_range)
+    ppPortSubDecl (PortDecl dir mb_type mb_range name c) = render (ppPortDir dir  <+> maybe (text "wire") ppPortType mb_type <+> mb ppRange mb_range)
+    getMaxLen xs = (maximum (map length $ map ppPortSubDecl xs))
 
 ppParas :: [ParamDecl] -> Doc
 ppParas []    = empty
 ppParas paras = char '#' <> ppParaList paras
     where ppParaList = lineParens . commasep . map ppParamDecl0
-
-ppPortDecl :: PortDecl -> Doc
-ppPortDecl (PortDecl dir mb_type mb_range name)
-  = ppPortDir dir <+> mb ppPortType mb_type <+> mb ppRange mb_range <+> ppIdent name
 
 ppPortDir :: PortDir -> Doc
 ppPortDir (PortDir dir) = text (show dir)
@@ -86,8 +89,8 @@ ppItem (InOutDeclItem x)     = ppInOutDecl x
 ppItem (NetDeclItem x)       = ppNetDecl x
 ppItem (RegDeclItem x)       = ppRegDecl x
 ppItem (EventDeclItem x)     = ppEventDecl x
-ppItem (PrimitiveInstItem x) = ppPrimitiveInst x
-ppItem (InstanceItem x)      = ppInstance x
+ppItem (PrimitiveInstItem x) = char '\n' <> ppPrimitiveInst x
+ppItem (InstanceItem x)      = char '\n' <> ppInstance x
 ppItem (ParamOverrideItem xs)
   = text "defparam" <+> ppParamAssigns xs <> semi
 ppItem (AssignItem mb_strength mb_delay assignments)
@@ -96,22 +99,22 @@ ppItem (AssignItem mb_strength mb_delay assignments)
     mb ppDelay mb_delay <+>
     commasep (map ppAssignment assignments) <> semi
 ppItem (InitialItem (EventControlStmt ctrl stmt))
-  = fsep [ text "initial", ppEventControl ctrl, nest 2 (maybe semi ppStatement stmt) ]
+  = char '\n' <>  fsep [ text "initial", ppEventControl ctrl, nest 2 (maybe semi ppStatement stmt) ]
 ppItem (InitialItem stmt)
-  = fsep [ text "initial", nest 2 (ppStatement stmt) ]
+  = char '\n' <>  fsep [ text "initial", nest 2 (ppStatement stmt) ]
 ppItem (AlwaysItem (EventControlStmt ctrl stmt))
-  = fsep [ text "always", ppEventControl ctrl, nest 2 (maybe semi ppStatement stmt) ]
+  = char '\n' <>  fsep [ text "always", ppEventControl ctrl, nest 2 (maybe semi ppStatement stmt) ]
 ppItem (AlwaysItem stmt)
-  = fsep [ text "always", nest 2 (ppStatement stmt) ]
+  = char '\n' <>  fsep [ text "always", nest 2 (ppStatement stmt) ]
 
 ppItem (TaskItem name decls stmt)
-  = text "task" <+> ppIdent name <> semi $$
+  = char '\n' <>  text "task" <+> ppIdent name <> semi $$
     nest 2 (vcat (map ppLocalDecl decls) $$
             ppStatement stmt) $$
     text "endtask"
 
 ppItem (FunctionItem t name decls stmt)
-  = text "function" <+> mb ppFunctionType t <+> ppIdent name <> semi $$
+  = char '\n' <>  text "function" <+> mb ppFunctionType t <+> ppIdent name <> semi $$
     nest 2 (vcat (map ppLocalDecl decls) $$
             ppStatement stmt) $$
     text "endfunction"
@@ -119,7 +122,15 @@ ppItem (FunctionItem t name decls stmt)
 -- (copied from andy's code in GenVHDL)
 -- TODO: get multline working
 ppItem (CommentItem msg)
-  = vcat [ text "//" <+> text m | m <- lines msg ]
+  = vcat [ text "//" <> text m | m <- lines msg ]
+ppItem (GenerateDeclItem g) = char '\n' <>  ppStatement g
+ppItem (GenVarItem s) = ppGenVar s
+
+ppGenVar :: [Ident] -> Doc
+ppGenVar s = 
+      text "genvar" <+>
+      vcat (map ppIdent s) <>
+      semi
 
 ppUDP :: UDP -> Doc
 ppUDP (UDP name output_var input_vars decls maybe_initial table_definition)
@@ -275,16 +286,16 @@ ppPrimName (PrimInstName x r)
 
 ppInstance :: Instance -> Doc
 ppInstance (Instance name delays_or_params insts)
-  = ppIdent name <+> ppDelaysOrParams delays_or_params $$
-    nest 2 (ppInsts insts) <> semi
+  = ppIdent name <+> ppDelaysOrParams delays_or_params <> 
+    char '\n' <> (ppInsts insts) <> semi
 
 ppDelaysOrParams :: Either [Expression] [Parameter] -> Doc
 ppDelaysOrParams (Left [])  = empty
 ppDelaysOrParams (Right []) = empty
 ppDelaysOrParams (Left es)
-  = char '#' <> parens (commasep (map ppExpr es))
+  = char '\n' <> char '#' <> parens (commasep (map ppExpr es))
 ppDelaysOrParams (Right ps)
-  = char '#' <> lineParens (commasep (map ppParameter ps))
+  = char '\n' <> char '#' <> lineParens (commasep (map ppParameter ps))
 
 ppParameter :: Parameter -> Doc
 ppParameter (Parameter x expr)
@@ -292,7 +303,7 @@ ppParameter (Parameter x expr)
 
 ppInsts :: [Inst] -> Doc
 ppInsts insts
-  = char '\n' <> vcat (punctuate comma (map ppInst insts))
+  = vcat (punctuate comma (map ppInst insts))
 
 ppInst :: Inst -> Doc
 ppInst (Inst x r cs)
@@ -305,8 +316,10 @@ ppInst (Inst x r cs)
 
 -- this is used for both port connections and parameter assignments
 ppNamedConnection :: NamedConnection -> Doc
-ppNamedConnection (NamedConnection x expr)
+ppNamedConnection (NamedConnection x expr (CommentItem ""))
   = period <> ppIdent x <> parens (ppExpr expr)
+ppNamedConnection (NamedConnection x expr cs)
+  = ppItem cs $$ period <> ppIdent x <> parens (ppExpr expr)
 
 -- ----------------------------------------------------------------------------
 -- 5. Behavioral Statements
@@ -396,6 +409,16 @@ ppStatement (ForceStmt assignment)
   = text "force" <+> ppAssignment assignment <> semi
 ppStatement (ReleaseStmt x)
   = text "release" <+> ppLValue x <> semi
+ppStatement (GenForStmt gvs fs)
+  = text "generate" $$
+    vcat (map ppItem gvs) $$
+    vcat (map ppStatement fs) $$
+    text "endgenerate"
+
+ppStatement (GenIfStmt vs)
+  = text "generate" $$
+    vcat (map ppStatement vs) $$
+    text "endgenerate"
 
 -- a helper for pretty-printing statement.  'fsep' chooses whether to put the
 -- statement on the same line as 'x', or nest it on the next line if it doesn't
@@ -554,9 +577,9 @@ ppEventControl :: EventControl -> Doc
 ppEventControl ctrl
   = char '@' <>
     case ctrl of
-      EventControlIdent x  -> ppIdent x
-      EventControlExpr e   -> parens (ppEventExpr e)
-      EventControlWildCard -> char '*'
+      EventControlIdent x  -> parens $ commasep (map ppIdent x)
+      EventControlExpr e   -> parens $ commasep (map ppEventExpr e)
+      EventControlWildCard -> text "(*)"
 
 ppDelay :: Delay -> Doc
 ppDelay x = char '#' <> ppExpr x

@@ -17,6 +17,7 @@ data Flag
     | Top                   -- -t
     | Description           -- -d
     | Automatic             -- -a
+    | Increment             -- -i
     | Port                  -- -p
     | Compliments           -- -c
     | Version               -- -v
@@ -43,6 +44,8 @@ flags =
     ,Option ['d'][] (NoArg Description)
         "Preserve annotations and port descriptions."
     ,Option ['a'][] (NoArg Automatic)
+        "Automatically connect ports according to specified rules."
+    ,Option ['i'][] (NoArg Increment)
         "Automatically connect ports according to specified rules."
     ,Option ['p'][] (NoArg Port)
         "Add ports directions as annotations."

@@ -188,7 +188,7 @@ port_declaration
        ty  <- optionMaybe portType
        r   <- optionMaybe range
        i   <- ident
-       return (PortDecl dir ty r i)
+       return (PortDecl dir ty r i (CommentItem ""))
 
 module_item :: Stream s Identity Char => P s Item
 module_item
@@ -205,9 +205,23 @@ module_item
     continuous_assign <|>
     (reserved "initial" >> liftM InitialItem statement) <|>
     (reserved "always" >> liftM AlwaysItem statement) <|>
+    generate_decl <|>
+    genvar_decl <|>
     task_decl <|>
     function_decl
   <?> "module item"
+
+generate_decl :: Stream s Identity Char => P s Item
+generate_decl
+  = liftM GenerateDeclItem genfor_stmt <|> 
+    liftM GenerateDeclItem genif_stmt
+
+genvar_decl :: Stream s Identity Char => P s Item
+genvar_decl
+  = do reserved "genvar"
+       vs <- commaSep1 ident
+       semi
+       return (GenVarItem vs)
 
 task_decl :: Stream s Identity Char => P s Item
 task_decl
@@ -489,7 +503,7 @@ named_connection
   = do dot
        x <- ident
        e <- parens expression
-       return (NamedConnection x e)
+       return (NamedConnection x e (CommentItem ""))
 
 -- -----------------------------------------------------------------------------
 -- statements
@@ -506,8 +520,25 @@ statement
     seq_block <|>
     par_block <|>
     task_stmt <|>
-    assign_stmt
+    assign_stmt <|>
+    genfor_stmt <|>
+    genif_stmt 
   <?> "statement"
+
+genfor_stmt :: Stream s Identity Char => P s Statement
+genfor_stmt
+  = do reserved "generate"
+       vs <- many genvar_decl
+       fs <- many for_stmt
+       reserved "endgenerate"
+       return (GenForStmt vs fs)
+
+genif_stmt :: Stream s Identity Char => P s Statement
+genif_stmt
+  = do reserved "generate"
+       vs <- many if_stmt
+       reserved "endgenerate"
+       return (GenIfStmt vs)
 
 assignment_stmt :: Stream s Identity Char => P s Statement
 assignment_stmt
@@ -619,8 +650,8 @@ event_control
   = do symbol "@"
        choice [ symbol "*" >> return EventControlWildCard
               , parens ((symbol "*" >> return EventControlWildCard) <|>
-                        liftM EventControlExpr event_expr)
-              , liftM EventControlIdent ident
+                        liftM EventControlExpr (commaSep event_expr) <|>
+                        liftM EventControlIdent (commaSep ident))
               ]
 
 assignment_control :: Stream s Identity Char => P s AssignmentControl

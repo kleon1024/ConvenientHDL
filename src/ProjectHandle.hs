@@ -33,6 +33,9 @@ import System.Directory
 import System.Directory.Tree
 import System.FilePath.Windows
 
+import Data.Time.Clock
+import Data.Time.Calendar
+
 import ProjectConfig
 import VerilogHandle
 
@@ -43,7 +46,7 @@ globalConfigJson = ConfigData {
         v0 = 0,
         v1 = 0,
         v2 = 0,
-        v3 = 0
+        v3 = 1
     },
     verstep  = Version {
         v0 = 0,
@@ -85,7 +88,7 @@ checkConfigFile :: FilePath -> FilePath -> FilePath -> IO()
 checkConfigFile configFilePath projectFilePath projectPath= do
     fileExist <- doesFileExist configFilePath
     if fileExist then do
-        maybeConfigData <- getConfigData configFilePath
+        maybeConfigData <- getConfigData
         if isNothing maybeConfigData then do
             removeFile configFilePath
             writeFile configFilePath $ toStrict $ encode globalConfigJson
@@ -132,8 +135,29 @@ createProjectFile filepath path configData = do
     print "Already get all information."
     writeFile filepath $ toStrict $ encode topData
 
-genTopFromFileList :: [FilePath] -> FilePath -> IO()
-genTopFromFileList filepaths currentPath = do 
+genTopWithVerilog :: [FilePath] -> FilePath -> [String] -> IO()
+genTopWithVerilog (vFile:cfs) currentPath args = do
+    let cyFiles = filter (isSuffixOf ".cy") cfs
+    when (null cyFiles) $ error ("No cynide file specified.")
+    let vName = dropExtension vFile
+    projectPath <- getProjectPath currentPath
+    projectFile <- readFile projectPath
+    let projectData = decode $ fromStrict projectFile :: Maybe TopData
+    let topData = getData projectData "Project"
+    let moduleUnitList = getModuleList topData 
+    let vFilePath = (getDirPath projectPath) </> (getVFilePath moduleUnitList vName)
+    verilogData <- parseVerilogFile vFilePath
+    cynideList <- sequence $ map getCynideFile $ map (currentPath </>) cyFiles
+    let verilogList = map (convertCynideToVerilog moduleUnitList) cynideList
+    renameFile vFilePath $ vFilePath ++ ".old"
+    print vFilePath
+    if "Port" `elem` args then do
+        printVerilog (addPortComment (mergeVerilog verilogData verilogList) moduleUnitList) vFilePath
+    else do
+        printVerilog (mergeVerilog verilogData verilogList) vFilePath
+
+genTopFromFileList :: [FilePath] -> FilePath -> [String] -> IO()
+genTopFromFileList filepaths currentPath args = do 
     let cyFiles = filter (isSuffixOf ".cy") filepaths
     if null cyFiles then
         error ("No cynide file specified.")
@@ -144,15 +168,20 @@ genTopFromFileList filepaths currentPath = do
     let projectData = decode $ fromStrict projectFile :: Maybe TopData
     let topData = getData projectData "Project"
     let moduleUnitList = getModuleList topData
-    msum $ map (genTopFromFile currentPath moduleUnitList) cyFiles
+    msum $ map (genTopFromFile currentPath moduleUnitList args) cyFiles
 
-genTopFromFile :: FilePath -> [ModuleUnit] -> FilePath -> IO ()
-genTopFromFile currentPath mods cyName= do
+genTopFromFile :: FilePath -> [ModuleUnit] -> [String] -> FilePath -> IO ()
+genTopFromFile currentPath mods args cyName  = do
     let cyFile = currentPath </> cyName
-    cyData <- fromJust <$> parseCynideFile cyFile
+    cyData <- getCynideFile cyFile
     -- print cyData 
     -- print mods
-    printVerilog (convertCynideToVerilog cyData mods) (addExtension (dropExtension cyFile) "v")
+    let verilogData = convertCynideToVerilog mods cyData 
+    let verilogFileName = addExtension (dropExtension cyFile) "v"
+    if "Port" `elem` args then do
+        printVerilog (addPortComment verilogData mods) verilogFileName
+    else do
+        printVerilog (verilogData) verilogFileName
 
 getModuleList (TopData _ (ProjectData _ _ ms)) = ms
 
@@ -198,7 +227,7 @@ setEmail [] _ = error "No email specified. ccv --email email"
 setEmail emails currentPath = do 
     executePath <- getDirPath . fromJust <$> findExecutable "ccv.exe"
     let configFilePath = executePath </> ".global.project"
-    configData <- getConfigData configFilePath
+    configData <- getConfigData
     projectPath <- getProjectPath currentPath
     projectData <- getProjectData projectPath
     let configData0 = getData configData "config"
@@ -216,7 +245,7 @@ setAuthor [] _ = error "No author specified. ccv --author author"
 setAuthor authors currentPath = do 
     executePath <- getDirPath . fromJust <$> findExecutable "ccv.exe"
     let configFilePath = executePath </> ".global.project"
-    configData <- getConfigData configFilePath
+    configData <- getConfigData
     projectPath <- getProjectPath currentPath
     projectData <- getProjectData projectPath
     let configData0 = getData configData "config"
@@ -234,8 +263,10 @@ setEmailProject (TopData cfd pj) s = TopData (setEmailConfig cfd s) pj
 setAuthorConfig (ConfigData _ s v1 v2) au = ConfigData au s v1 v2
 setAuthorProject (TopData cfd pj) s = TopData (setAuthorConfig cfd s) pj
 
-getConfigData :: FilePath -> IO (Maybe ConfigData)
-getConfigData configFilePath = do 
+getConfigData :: IO (Maybe ConfigData)
+getConfigData = do 
+    executePath <- getDirPath . fromJust <$> findExecutable "ccv"
+    let configFilePath = executePath </> ".global.project"
     configFile <- readFile configFilePath
     let configData = decode $ fromStrict configFile :: Maybe ConfigData
     return configData
@@ -251,3 +282,43 @@ updateProject path = do
     projectFilePath <- getProjectPath path
     print $ "find project root in " ++ projectFilePath
     createProjectFileWithoutConfigData projectFilePath
+
+newVerilogFiles :: [FilePath] -> FilePath -> IO()
+newVerilogFiles files currentPath = msum $ map (newVerilogFile currentPath) files
+
+newVerilogFile :: FilePath -> FilePath -> IO()
+newVerilogFile currentPath fileName = do
+    configData0 <- getConfigData
+    let configData = getData configData0 "config"
+    dateString <- date
+    let verilogData = newVerilogData fileName
+    printVerilogWithHeader verilogData fileName (currentPath </> vFile) vFile configData dateString
+    where vFile = (addExtension fileName "v")
+
+date :: IO String
+date = getCurrentTime >>= return . renderDate . toGregorian . utctDay
+    where renderDate (y, m, d) = intercalate "/" $ [(show y),(show m),(show d)]
+
+mergeMultiFiles :: [FilePath] -> FilePath -> [String] -> IO ()
+mergeMultiFiles paths currentPath args = do
+    let filePaths = filter (isSuffixOf ".v") paths
+    when (null filePaths) $ error ("No verilog file specified. Add extension .v")
+    when ((length filePaths) == 1) (error "Only one file specified")
+    verilogList <- sequence (parseFromFileList filePaths)
+    if "Increment" `elem` args then
+        printVerilog (mergeVerilog (head verilogList) (tail verilogList)) $ head filePaths
+    else
+        printVerilog (mergeVerilogFile verilogList) $ head filePaths
+
+splitMultiFiles :: [FilePath] -> FilePath -> IO ()
+splitMultiFiles paths currentPath = do
+    let filePaths = filter (isSuffixOf ".v") paths
+    when (null filePaths) $ error ("No verilog file specified. Add extension .v")
+    verilogList <- sequence (parseFromFileList (map (currentPath </>) paths))
+    msum $ map (renameMultiFile (map (currentPath </>) paths)) (map (\s -> currentPath </> s ++ ".old") paths)
+    msum $ map splitSingleFile verilogList
+    where
+        renameMultiFile nameL name= msum $ map (renameFile name) nameL
+        splitSingleFile vFile = do  
+            msum $ map (\(vdata, vpath) -> 
+                printVerilog vdata (currentPath </> vpath ++ ".v")) (splitVerilogFile vFile)

@@ -118,6 +118,8 @@ data Item
   | TaskItem Ident [LocalDecl] Statement
   | FunctionItem (Maybe FunctionType) Ident [LocalDecl] Statement
   | CommentItem String
+  | GenerateDeclItem Statement
+  | GenVarItem [Ident]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- --------------------
@@ -253,7 +255,7 @@ data InOutDecl
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PortDecl
-  = PortDecl PortDir (Maybe PortType) (Maybe Range) Ident
+  = PortDecl PortDir (Maybe PortType) (Maybe Range) Ident Item
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data NetDecl
@@ -381,7 +383,7 @@ data Connections
 -- | A named connection, like a parameter value assignment, associates a port
 -- with a value in a module instance.
 data NamedConnection
-  = NamedConnection Ident Expression
+  = NamedConnection Ident Expression Item
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- ----------------------------------------------------------------------------
@@ -405,6 +407,10 @@ data Statement
   | WhileStmt Expression Statement
   -- | @for@ statement, e.g. @for (i = 0; i < 10; i = i + 1) $display(\"%d\", i);@
   | ForStmt Assignment Expression Assignment Statement
+  -- | @gen-for@ statement.
+  | GenForStmt [Item] [Statement]
+  -- | @gen-if@ statement.
+  | GenIfStmt [Statement]
   -- | @delay@ statement, e.g. @\#10 x = 1;@
   | DelayStmt Delay (Maybe Statement)
   -- | Control statement triggered by an event, e.g. @\@(posedge clk) x <= 10;@
@@ -485,9 +491,9 @@ data PortDirWord
   deriving (Eq, Ord, Bounded, Enum, Data, Typeable)
 
 instance Show PortDirWord where
-  show Input  = "input"
+  show Input  = "input "
   show Output = "output"
-  show InOut  = "inout"
+  show InOut  = "inout "
 
 data PortDir
   = PortDir PortDirWord
@@ -498,7 +504,7 @@ data PortTypeWord
   deriving (Eq, Ord, Bounded, Enum, Data, Typeable)
 
 instance Show PortTypeWord where
-  show Reg  = "reg"
+  show Reg  = "reg "
   show Wire = "wire"
 
 data PortType
@@ -514,8 +520,8 @@ data AssignmentControl
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data EventControl
-  = EventControlIdent Ident     -- ^ @\@identifier@
-  | EventControlExpr EventExpr  -- ^ @\@(event_expression)@
+  = EventControlIdent [Ident]     -- ^ @\@identifier@
+  | EventControlExpr [EventExpr]  -- ^ @\@(event_expression)@
   | EventControlWildCard        -- ^ @\@\*@
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -693,6 +699,10 @@ instance Binary Item where
                                                put x4
                 CommentItem x1 -> do putWord8 15
                                      put x1
+                GenerateDeclItem x1 -> do putWord8 16
+                                          put x1
+                GenVarItem x1 -> do putWord8 17
+                                    put x1
         get
           = do i <- getWord8
                case i of
@@ -735,6 +745,10 @@ instance Binary Item where
                             return (FunctionItem x1 x2 x3 x4)
                    15 -> do x1 <- get
                             return (CommentItem x1)
+                   16 -> do x1 <- get
+                            return (GenerateDeclItem x1)
+                   17 -> do x1 <- get
+                            return (GenVarItem x1)
                    _ -> error "Corrupted binary data for Item"
 
 
@@ -928,17 +942,19 @@ instance Binary InOutDecl where
                return (InOutDecl x1 x2)
 
 instance Binary PortDecl where
-        put (PortDecl x1 x2 x3 x4)
+        put (PortDecl x1 x2 x3 x4 x5)
           = do put x1
                put x2
                put x3
                put x4
+               put x5
         get
           = do x1 <- get
                x2 <- get
                x3 <- get
                x4 <- get
-               return (PortDecl x1 x2 x3 x4)
+               x5 <- get
+               return (PortDecl x1 x2 x3 x4 x5)
 
 instance Binary NetDecl where
         put x
@@ -1158,13 +1174,15 @@ instance Binary Connections where
 
 
 instance Binary NamedConnection where
-        put (NamedConnection x1 x2)
+        put (NamedConnection x1 x2 x3)
           = do put x1
                put x2
+               put x3
         get
           = do x1 <- get
                x2 <- get
-               return (NamedConnection x1 x2)
+               x3 <- get
+               return (NamedConnection x1 x2 x3)
 
 
 instance Binary Statement where
@@ -1232,6 +1250,11 @@ instance Binary Statement where
                                    put x1
                 ReleaseStmt x1 -> do putWord8 19
                                      put x1
+                GenForStmt x1 x2 -> do putWord8 20
+                                       put x1
+                                       put x2
+                GenIfStmt x1 -> do putWord8 21
+                                   put x1
         get
           = do i <- getWord8
                case i of
@@ -1297,6 +1320,11 @@ instance Binary Statement where
                             return (ForceStmt x1)
                    19 -> do x1 <- get
                             return (ReleaseStmt x1)
+                   20 -> do x1 <- get
+                            x2 <- get
+                            return (GenForStmt x1 x2)
+                   21 -> do x1 <- get
+                            return (GenIfStmt x1)
                    _ -> error "Corrupted binary data for Statement"
 
 

@@ -65,6 +65,8 @@ endmodule
 
 * -p :: (ports) Provides port directions.
 
+* -i :: (Increment) Merge converted file into original file.
+
 A typical ccv(Convenient Coding for Verilog) file is shown below:
 ```Verilog
 module topfilename // same as the filename by default
