@@ -15,6 +15,15 @@
 
 * Provides basic circuits check and automatically fix the potential grammar problem. -->
 
+###Compile
+
+```Bash
+git clone https://github.com/githubkleon/ConvenientHDL.git
+cd ConvenientHDL
+cd src
+ghc ccv.hs
+```
+
 ###Argument
 
 * --init (filepath) :: (initial) Create a project tree for the files under filepath recursively. If no filepath is specified, then use current directory by default.
