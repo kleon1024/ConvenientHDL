@@ -61,7 +61,7 @@ ppModule (Module name mb_paras ports body)
 
 ppPorts :: [PortDecl] -> Doc
 ppPorts [] = empty
-ppPorts x = lineParens . commasep $ map (ppPortDecl (getMaxLen x)) x
+ppPorts x = lineParens $ commasep $ map (ppPortDecl (getMaxLen x)) x
   where
     ppPortDecl l (PortDecl dir mb_type mb_range name c) = 
         ppItem c <> text (ppPortSub dir mb_type mb_range) <+> 
@@ -82,13 +82,14 @@ ppPortType :: PortType -> Doc
 ppPortType (PortType t) = text (show t)
 
 ppItem :: Item -> Doc
-ppItem (ParamDeclItem x)     = ppParamDecl x
+ppItem (ParamDeclItem x)     = char '\n' <> ppParamDecl x
 ppItem (InputDeclItem x)     = ppInputDecl x
 ppItem (OutputDeclItem x)    = ppOutputDecl x
 ppItem (InOutDeclItem x)     = ppInOutDecl x
 ppItem (NetDeclItem x)       = ppNetDecl x
 ppItem (RegDeclItem x)       = ppRegDecl x
 ppItem (EventDeclItem x)     = ppEventDecl x
+ppItem (LocalParamItem x)    = char '\n' <> ppLocalParam x
 ppItem (PrimitiveInstItem x) = char '\n' <> ppPrimitiveInst x
 ppItem (InstanceItem x)      = char '\n' <> ppInstance x
 ppItem (ParamOverrideItem xs)
@@ -103,7 +104,7 @@ ppItem (InitialItem (EventControlStmt ctrl stmt))
 ppItem (InitialItem stmt)
   = char '\n' <>  fsep [ text "initial", nest 2 (ppStatement stmt) ]
 ppItem (AlwaysItem (EventControlStmt ctrl stmt))
-  = char '\n' <>  fsep [ text "always", ppEventControl ctrl, nest 2 (maybe semi ppStatement stmt) ]
+  = char '\n' <>  fsep [ text "always", ppEventControl ctrl, (maybe semi ppStatement stmt) ]
 ppItem (AlwaysItem stmt)
   = char '\n' <>  fsep [ text "always", nest 2 (ppStatement stmt) ]
 
@@ -214,6 +215,10 @@ ppLocalDecl (LocalRegDecl x)         = ppRegDecl x
 ppParamDecl :: ParamDecl -> Doc
 ppParamDecl (ParamDecl paramAssigns)
   = text "parameter" <+> ppParamAssigns paramAssigns <> semi
+
+ppLocalParam :: LocalParam -> Doc
+ppLocalParam (LocalParam paramAssigns)
+  = text "localparam" <+> ppParamAssigns paramAssigns <> semi
 
 ppParamDecl0 :: ParamDecl -> Doc
 ppParamDecl0 (ParamDecl paramAssigns)
@@ -362,7 +367,7 @@ ppStatement (RepeatStmt expr stmt)
 ppStatement (WhileStmt expr stmt)
   = (text "while" <+> parens (ppExpr expr)) `nestStmt` ppStatement stmt
 ppStatement (ForStmt init_assign expr_cond loop_assign stmt)
-  = x `nestStmt` ppStatement stmt
+  = x $$ nest 2 (ppStatement stmt)
   where
     x = text "for" <+> parens (ppAssignment init_assign <> semi <+>
                                ppExpr expr_cond <> semi <+>
@@ -371,7 +376,7 @@ ppStatement (DelayStmt delay mb_stmt)
   = ppDelay delay <+> maybe semi ppStatement mb_stmt
 ppStatement (EventControlStmt ctrl mb_stmt)
   = case mb_stmt of
-      Just stmt -> ppEventControl ctrl `nestStmt` ppStatement stmt
+      Just stmt -> ppEventControl ctrl <> char '\n' <> ppStatement stmt
       Nothing   -> ppEventControl ctrl <> semi
 ppStatement (WaitStmt expr stmt)
   = (text "wait" <+> parens (ppExpr expr)) `nestStmt` maybe semi ppStatement stmt
@@ -410,15 +415,16 @@ ppStatement (ForceStmt assignment)
 ppStatement (ReleaseStmt x)
   = text "release" <+> ppLValue x <> semi
 ppStatement (GenForStmt gvs fs)
-  = text "generate" $$
-    vcat (map ppItem gvs) $$
-    vcat (map ppStatement fs) $$
+  = text "generate" <> char '\n' <>
+    vcat (map ppItem gvs) <> char '\n' <>
+    vcat (map ppStatement fs) <> char '\n' <>
     text "endgenerate"
 
 ppStatement (GenIfStmt vs)
   = text "generate" $$
     vcat (map ppStatement vs) $$
     text "endgenerate"
+ppStatement (ItemStmt it) = ppItem it
 
 -- a helper for pretty-printing statement.  'fsep' chooses whether to put the
 -- statement on the same line as 'x', or nest it on the next line if it doesn't

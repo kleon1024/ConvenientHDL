@@ -12,7 +12,7 @@ data Flag
     = Email                 -- --email
     | Author                -- --author
     | Initial               -- --init
-    | Update                -- --update
+    | Update                -- --update, -u
     | New                   -- -n
     | Top                   -- -t
     | Description           -- -d
@@ -35,7 +35,7 @@ flags =
         "Set in contact in file header."
     ,Option []["init"] (NoArg Initial)
         "Set project path, which is used to generate the file hierachy."
-    ,Option []["update"] (NoArg Update)
+    ,Option ['u']["update"] (NoArg Update)
         "Update project hierachy."
     ,Option ['n'][] (NoArg New)
         "Create a new verilog file with file header and simple module frame."

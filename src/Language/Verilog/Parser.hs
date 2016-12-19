@@ -202,6 +202,7 @@ module_item
     liftM PrimitiveInstItem primitive_instance <|>
     liftM InstanceItem module_or_udp_instance <|>
     liftM ParamOverrideItem (fail "TODO param override") <|>
+    liftM LocalParamItem localparam_declaration <|>
     continuous_assign <|>
     (reserved "initial" >> liftM InitialItem statement) <|>
     (reserved "always" >> liftM AlwaysItem statement) <|>
@@ -353,6 +354,15 @@ parameter_declaration
        return (ParamDecl param_assigns)
   <?> "parameter declaration"
 
+localparam_declaration :: Stream s Identity Char => P s LocalParam
+localparam_declaration
+  = do reserved "localparam"
+       param_assigns <- (commaSep1 parameter_assignment)
+                        <?> "parameter list"
+       semi
+       return (LocalParam param_assigns)
+  <?> "localparam declaration"
+
 parameter_declaration01 :: Stream s Identity Char => P s ParamDecl
 parameter_declaration01
   = do reserved "parameter"
@@ -490,13 +500,17 @@ inst :: Stream s Identity Char => P s Inst
 inst
   = do x <- ident
        r <- optionMaybe range
+       -- mc <- optionMaybe connections
+       -- return (Inst x r $ maybeList mc)
+       -- where maybeList Nothing = []
+       --       maybeList (Just l) = l
        c <- connections
        return (Inst x r c)
 
 connections :: Stream s Identity Char => P s Connections
 connections
-  = parens (liftM Connections (commaSep1 expression) <|>
-            liftM NamedConnections (commaSep1 named_connection))
+  = parens (liftM NamedConnections (commaSep named_connection) <|>
+            liftM Connections (commaSep expression))
 
 named_connection :: Stream s Identity Char => P s NamedConnection
 named_connection
@@ -522,8 +536,12 @@ statement
     task_stmt <|>
     assign_stmt <|>
     genfor_stmt <|>
-    genif_stmt 
+    genif_stmt <|>
+    item_stmt
   <?> "statement"
+
+item_stmt :: Stream s Identity Char => P s Statement
+item_stmt = liftM ItemStmt module_item
 
 genfor_stmt :: Stream s Identity Char => P s Statement
 genfor_stmt

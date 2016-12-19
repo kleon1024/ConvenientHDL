@@ -43,6 +43,8 @@ check baseName
                                              putStrLn ("Fail2: " ++ baseName)
                             Right ast2 -> do let str2 = render (ppVerilog ast2)
                                              writeFile fp2 str2
+                                             -- print ast1
+                                             -- print ast2
                                              if (ast1 == ast2)
                                                 then putStrLn ("Match: " ++ baseName)
                                                 else do writeFile fp_err3 ""

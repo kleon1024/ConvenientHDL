@@ -103,7 +103,10 @@ data ProjectData = ProjectData {
 
 instance NFData ProjectData
 
-data TopData = TopData ConfigData ProjectData deriving (Show, Typeable, Data, Generic)
+data TopData = TopData {
+    config_data  :: ConfigData,
+    project_data :: ProjectData
+} deriving (Show, Typeable, Data, Generic)
 
 instance NFData TopData
 

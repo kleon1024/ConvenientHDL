@@ -95,6 +95,8 @@ printCynide :: CS.Cynide -> FilePath -> IO()
 printCynide fdata filepath = writeFile filepath $ render (CP.ppCynide fdata)
 
 convertToModuleUnitList :: [FilePath] -> [Verilog] -> [ModuleUnit]
+convertToModuleUnitList [] _ = []
+convertToModuleUnitList _ [] = []
 convertToModuleUnitList pathL vL = concat $ map convertFromVerilog (zip pathL vL)
 
 convertFromVerilog :: (FilePath, Verilog) -> [ModuleUnit]
@@ -129,8 +131,12 @@ convertFromDescription (path, ModuleDescription (Module (Ident ident) mb_para po
             ExprNum (IntNum _ _ _ "0") -> case ex1 of 
                 ExprBinary Minus (ExprBinary Times n1 n2) (ExprNum (IntNum _ _ _ "1"))
                     -> (render $ ppExpr n1)
-                _ -> (render $ ppExpr ex1)
-            _ -> (render $ ppExpr ex1) ++ "-" ++ (render $ ppExpr ex2)
+                ExprBinary Minus n (ExprNum (IntNum _ _ _ "1"))
+                    -> (render $ ppExpr n)
+                ExprNum (IntNum _ _ _ s)
+                    -> show (((read s)::Int) + 1)
+                _ -> "("++(render $ ppExpr ex1)++ ")+1"
+            _ -> "(" ++ (render $ ppExpr ex1) ++ "-" ++ (render $ ppExpr ex2) ++ ")+1"
         getPortWidth (Range ex1 ex2) = case ex2 of
             ExprNum (IntNum _ _ _ "0") -> case ex1 of
                 ExprBinary Minus (ExprBinary Times n1 n2) (ExprNum (IntNum _ _ _ "1"))
@@ -146,6 +152,7 @@ convertToModuleList x = concat $ map getDescriptions x
         getModule (ModuleDescription mod) = Just mod
 
 convertToProjectTreeList :: [Module] -> [ProjectTree]
+convertToProjectTreeList [] = []
 convertToProjectTreeList xs =  catMaybes $ map (getProjectRoot xs) xs
     where getProjectRoot vlist x = case isRoot vlist x of
                                     True -> Just $ fromJust $ getProjectTree vlist (x, "top")
@@ -238,21 +245,36 @@ fromNodeToExpr n = parseExpr $ render $ CP.ppConnectNode n
 
 convertCInstToVInst :: CS.InstDecl -> [ModuleUnit] -> Item
 convertCInstToVInst (CS.InstDecl (CS.Ident mid) (CS.Ident iid) mb_ic) mods = 
-    InstanceItem $ Instance (Ident mid) (Right []) 
+    InstanceItem $ Instance (Ident mid) getParaListEither
     ([Inst (Ident iid) Nothing (NamedConnections $ 
-    (maybe [] (map getConFromIC) mb_ic) ++ getConFromModList)])
+    catMaybes (maybe [] (map getConFromIC) mb_ic) ++ getConFromModList)])
     where
         getConFromIC (CS.InterConDel n1 n2) = 
             let n1name = getNodeName n1 in
             case n1name `elem` getModUnitPorts of
-                True -> (NamedConnection (Ident n1name) (fromNodeToExpr n2) (CommentItem ""))
-                False -> error (n1name ++ " is not in " ++ (mod_name $ getModUnit mods mid) ++ "::" ++ (mod_file $ getModUnit mods mid))
+                True -> Just $ (NamedConnection (Ident n1name) (fromNodeToExpr n2) (CommentItem ""))
+                False -> case n1name `elem` (map fst getModUnitParas) of
+                    True -> Nothing
+                    False -> error (n1name ++ " is not in " ++ (mod_name $ getModUnit mods mid) ++ "::" ++ (mod_file $ getModUnit mods mid))
         getModUnitPorts = (map port (ports $ getModUnit mods mid))
         getNodeName n = render (CP.ppConnectNode n)
         getConFromModList = map genConFromList $ filter (not . hasSamePortName (maybe [] (map getNodeNameFromIC) mb_ic)) getModUnitPorts
         getNodeNameFromIC (CS.InterConDel n1 _) = getNodeName n1
         hasSamePortName ps p = or $ map (==p) ps
-        genConFromList s = (NamedConnection (Ident s) (parseExpr "_")  (CommentItem ""))
+        genConFromList s = (NamedConnection (Ident s) (parseExpr s)  (CommentItem ""))
+        getParaListEither = Right (catMaybes (maybe [] (map getParaFromIC) mb_ic) ++ getParaFromModList)
+        getParaFromIC (CS.InterConDel n1 n2) = 
+            let n1name = getNodeName n1 in
+            case n1name `elem` (map fst getModUnitParas) of
+                True -> Just $ Parameter (Ident n1name) (fromNodeToExpr n2)
+                False -> case n1name `elem` getModUnitPorts of
+                    True -> Nothing
+                    False -> error (n1name ++ " is not in " ++ (mod_name $ getModUnit mods mid) ++ "::" ++ (mod_file $ getModUnit mods mid))
+        getModUnitParas = zip (map para getParaUnits) (map exprs getParaUnits)
+        getParaUnits = concat $ map params (paras $ getModUnit mods mid)
+        getParaFromModList = map genParaFromList $ filter (not . hasSameParaName (maybe [] (map getNodeNameFromIC) mb_ic)) getModUnitParas
+        genParaFromList (s,expr) = (Parameter (Ident s) (parseExpr expr))
+        hasSameParaName ps p = or $ map (== (fst p)) ps
 
 getModUnit :: [ModuleUnit] -> String -> ModuleUnit
 getModUnit mods mid = case getMaybeModList of
@@ -271,8 +293,8 @@ newVerilogData s =
     (PortDecl (PortDir Input) Nothing Nothing (Ident "rst") (CommentItem ""))] []
     )])
 
-addPortComment :: Verilog -> [ModuleUnit] -> Verilog
-addPortComment (Verilog v) mods = Verilog (map addPort1 v)
+addPortComment :: [ModuleUnit] -> Verilog -> Verilog
+addPortComment mods (Verilog v) = Verilog (map addPort1 v)
     where 
         addPort1 (ModuleDescription (Module id pa po it)) = 
             ModuleDescription (Module id pa po (map addPort2 it))
@@ -284,7 +306,8 @@ addPortComment (Verilog v) mods = Verilog (map addPort1 v)
             Inst id r (NamedConnections (map (addPort4 mid) ncs))
         addPort3 _ x = x
         addPort4 id (NamedConnection (Ident pt) exp _) = 
-            NamedConnection (Ident pt) exp (CommentItem (getPortDirFrom pt (getModUnit mods id)))
+            NamedConnection (Ident pt) exp (CommentItem $ 
+            (getPortDirFrom pt (getModUnit mods id)) ++ "   " ++ (getPortWidthFrom pt (getModUnit mods id)))
         -- addPort4 _ x = x
         getPortDirFrom pt mod = case getPortList pt mod of
             [] -> error ("Port not found " ++ (mod_name mod) ++ ":" ++ "pt")
@@ -292,8 +315,13 @@ addPortComment (Verilog v) mods = Verilog (map addPort1 v)
                 DInput -> "i"
                 DOutput -> "o"
                 DInOut -> "io"
+        getPortWidthFrom pt mod = case getPortList pt mod of
+            [] -> error ("Port not found " ++ (mod_name mod) ++ ":" ++ "pt")
+            x -> addParens (port_len (head x) ++ " * " ++ port_wid (head x))
         getPortList pt mod = filter (hasEqualName pt) $ ports mod
         hasEqualName s m = ((port m) == s)
+
+addParens s = "(" ++ s ++ ")"
             
 getVFilePath :: [ModuleUnit] -> FilePath -> FilePath
 getVFilePath mods v = mod_file $ getModUnit mods v
@@ -330,7 +358,7 @@ mergeVerilogFile vs = Verilog (concat $ map getDescription vs)
 --Single Description
 splitVerilogFile :: Verilog -> [(Verilog,FilePath)]
 splitVerilogFile (Verilog []) = error ("Original file empty.")
-splitVerilogFile (Verilog ds) = zip (map Verilog $ splitList ds []) (catMaybes $ map getModuleName ds)
+splitVerilogFile (Verilog ds) = zip (reverse (map Verilog $ splitList ds [])) (catMaybes $ map getModuleName ds)
     where 
         getModuleName (ModuleDescription (Module (Ident n) _ _ _)) = Just n
         getModuleName _ = Nothing

@@ -44,7 +44,7 @@ module Language.Verilog.Syntax.AST
   -- * Items and Declarations
   Item(..), FunctionType(..), LocalDecl(..), PortDecl(..),
   ParamDecl(..), InputDecl(..), OutputDecl(..), InOutDecl(..),
-  NetDecl(..), RegDecl(..), RegType(..), EventDecl(..),
+  NetDecl(..), RegDecl(..), RegType(..), EventDecl(..), LocalParam(..),
 
   -- * Module, UDP and Primitive Instantiations
   PrimitiveInst(..), PrimInst(..), PrimInstName(..), PrimType(..),
@@ -120,6 +120,7 @@ data Item
   | CommentItem String
   | GenerateDeclItem Statement
   | GenVarItem [Ident]
+  | LocalParamItem LocalParam
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- --------------------
@@ -236,6 +237,10 @@ data LocalDecl
   | LocalOutputDecl OutputDecl
   | LocalInOutDecl InOutDecl
   | LocalRegDecl RegDecl
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+newtype LocalParam
+  = LocalParam [ParamAssign]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 newtype ParamDecl
@@ -435,6 +440,7 @@ data Statement
   | ForceStmt Assignment
   -- | @release@ statement.
   | ReleaseStmt LValue
+  | ItemStmt Item
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- | An assignment.
@@ -703,6 +709,8 @@ instance Binary Item where
                                           put x1
                 GenVarItem x1 -> do putWord8 17
                                     put x1
+                LocalParamItem x1 -> do putWord8 18
+                                        put x1
         get
           = do i <- getWord8
                case i of
@@ -749,6 +757,8 @@ instance Binary Item where
                             return (GenerateDeclItem x1)
                    17 -> do x1 <- get
                             return (GenVarItem x1)
+                   18 -> do x1 <- get
+                            return (LocalParamItem x1)
                    _ -> error "Corrupted binary data for Item"
 
 
@@ -904,6 +914,11 @@ instance Binary LocalDecl where
                            return (LocalRegDecl x1)
                    _ -> error "Corrupted binary data for LocalDecl"
 
+instance Binary LocalParam where
+        put (LocalParam x1) = put x1
+        get
+          = do x1 <- get
+               return (LocalParam x1)
 
 instance Binary ParamDecl where
         put (ParamDecl x1) = put x1
@@ -1255,6 +1270,8 @@ instance Binary Statement where
                                        put x2
                 GenIfStmt x1 -> do putWord8 21
                                    put x1
+                ItemStmt x1 -> do putWord8 22
+                                  put x1
         get
           = do i <- getWord8
                case i of
@@ -1325,6 +1342,8 @@ instance Binary Statement where
                             return (GenForStmt x1 x2)
                    21 -> do x1 <- get
                             return (GenIfStmt x1)
+                   22 -> do x1 <- get
+                            return (ItemStmt x1)
                    _ -> error "Corrupted binary data for Statement"
 
 
